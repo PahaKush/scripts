@@ -50,7 +50,12 @@ log_info "Ожидание запуска агента и генерации н�
 FINGERPRINT=""
 
 for i in {1..15}; do
-    FINGERPRINT=$(docker logs vpn-node 2>&1 | grep -oE "[A-Fa-f0-9]{64}" | tr '[:upper:]' '[:lower:]' | head -n 1 || true)
+    # Сначала ищем явный маркер FINGERPRINT=<hex>, иначе fallback на "голый" 64-hex
+    # (обратная совместимость со старым агентом без маркера).
+    FINGERPRINT=$(docker logs vpn-node 2>&1 | grep -oE "FINGERPRINT=[A-Fa-f0-9]{64}" | head -n1 | cut -d= -f2 | tr '[:upper:]' '[:lower:]' || true)
+    if [ -z "$FINGERPRINT" ]; then
+        FINGERPRINT=$(docker logs vpn-node 2>&1 | grep -oE "[A-Fa-f0-9]{64}" | tr '[:upper:]' '[:lower:]' | head -n 1 || true)
+    fi
     if [ -n "$FINGERPRINT" ]; then
         break
     fi
