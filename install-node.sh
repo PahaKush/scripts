@@ -88,6 +88,7 @@ docker run -d --name vpn-node --restart=always \
     --device /dev/net/tun:/dev/net/tun \
     -v /lib/modules:/lib/modules:ro \
     --ulimit nofile=65536:65536 \
+    --log-opt max-size=10m --log-opt max-file=3 \
     -p $API_PORT:9090 \
     -p $WG_PORT:51820/udp \
     -p $AWG_PORT:51821/udp \
