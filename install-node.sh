@@ -12,7 +12,8 @@ AGENT_TAG=${AGENT_TAG:-2.4.1}
 # бот всегда ходит по IP (не зависит от DNS), а в конфиги клиентов попадает то, что здесь.
 # Указывать домен стоит заранее: адрес зашивается в уже выданные конфиги, и переехать на
 # другой сервер потом можно только сохранив его — иначе все выданные конфиги умрут.
-NODE_DOMAIN=${NODE_DOMAIN:-}
+NODE_DOMAIN=${2:-${NODE_DOMAIN:-}}
+NODE_DOMAIN=${NODE_DOMAIN#NODE_DOMAIN=}
 AGENT_IMAGE="ghcr.io/pahakush/private-net-node-agent:${AGENT_TAG}"
 TLS_VOLUME="vpn-node-tls"
 
@@ -85,13 +86,14 @@ log_info "Публичный IP: $HOST"
 
 if [ -n "$NODE_DOMAIN" ]; then
     if ! echo "$NODE_DOMAIN" | grep -qE '^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$'; then
-        log_err "NODE_DOMAIN='$NODE_DOMAIN' не похож на домен. Пример: NODE_DOMAIN=vpn.example.com"
+        log_err "'$NODE_DOMAIN' не похож на домен. Домен идёт вторым аргументом:"
+        log_err "  bash -s -- <токен> vpn.example.com"
         exit 1
     fi
     # Формально IPv4 подходит под шаблон имени хоста, но смысла в нём здесь нет: адрес
     # зашивается в конфиги, и ровно IP делает переезд на другой сервер невозможным.
     if echo "$NODE_DOMAIN" | grep -qE '^[0-9]+(\.[0-9]+){3}$'; then
-        log_err "NODE_DOMAIN='$NODE_DOMAIN' — это IP-адрес. Домен нужен именно для того, чтобы"
+        log_err "'$NODE_DOMAIN' — это IP-адрес. Домен нужен именно для того, чтобы"
         log_err "адрес в клиентских конфигах пережил переезд на другой сервер."
         exit 1
     fi
@@ -157,7 +159,8 @@ echo -e "${YELLOW}${CONN}${NC}"
 if [ -z "$NODE_DOMAIN" ]; then
     echo -e "\n${YELLOW}Узел добавляется по IP.${NC} Адрес зашивается в выданные конфиги, поэтому"
     echo -e "перенести его на другой сервер без перевыпуска конфигов будет нельзя."
-    echo -e "Если планируете переезд — переустановите с ${YELLOW}NODE_DOMAIN=vpn.example.com${NC}."
+    echo -e "Если планируете переезд — переустановите, дописав домен вторым аргументом:"
+    echo -e "  ${YELLOW}... | \${SUDO}bash -s -- <токен> vpn.example.com${NC}"
 fi
 echo -e "\nСертификат сохранён в docker volume '$TLS_VOLUME' — при обновлении узла"
 echo -e "отпечаток больше не меняется, менять его в боте повторно не придётся."
