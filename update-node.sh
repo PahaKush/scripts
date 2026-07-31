@@ -7,7 +7,7 @@ log_err()  { echo -e "${RED}[ERROR]${NC} $1" >&2; }
 
 AGENT_TOKEN=${1:-}
 PORTS_ARGS=${2:-}
-AGENT_TAG=${AGENT_TAG:-2.4.0}
+AGENT_TAG=${AGENT_TAG:-2.4.1}
 AGENT_IMAGE="ghcr.io/pahakush/private-net-node-agent:${AGENT_TAG}"
 TLS_VOLUME="vpn-node-tls"
 

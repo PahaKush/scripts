@@ -7,7 +7,12 @@ log_warn() { echo -e "${YELLOW}[WARN]${NC} $1" >&2; }
 log_err()  { echo -e "${RED}[ERROR]${NC} $1" >&2; }
 
 AGENT_TOKEN=${1:-}
-AGENT_TAG=${AGENT_TAG:-2.4.0}
+AGENT_TAG=${AGENT_TAG:-2.4.1}
+# Домен для КЛИЕНТСКИХ конфигов. Не путать с адресом, по которому бот ходит в API агента:
+# бот всегда ходит по IP (не зависит от DNS), а в конфиги клиентов попадает то, что здесь.
+# Указывать домен стоит заранее: адрес зашивается в уже выданные конфиги, и переехать на
+# другой сервер потом можно только сохранив его — иначе все выданные конфиги умрут.
+NODE_DOMAIN=${NODE_DOMAIN:-}
 AGENT_IMAGE="ghcr.io/pahakush/private-net-node-agent:${AGENT_TAG}"
 TLS_VOLUME="vpn-node-tls"
 
@@ -78,6 +83,32 @@ if [ -z "$HOST" ]; then
 fi
 log_info "Публичный IP: $HOST"
 
+if [ -n "$NODE_DOMAIN" ]; then
+    if ! echo "$NODE_DOMAIN" | grep -qE '^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$'; then
+        log_err "NODE_DOMAIN='$NODE_DOMAIN' не похож на домен. Пример: NODE_DOMAIN=vpn.example.com"
+        exit 1
+    fi
+    # Формально IPv4 подходит под шаблон имени хоста, но смысла в нём здесь нет: адрес
+    # зашивается в конфиги, и ровно IP делает переезд на другой сервер невозможным.
+    if echo "$NODE_DOMAIN" | grep -qE '^[0-9]+(\.[0-9]+){3}$'; then
+        log_err "NODE_DOMAIN='$NODE_DOMAIN' — это IP-адрес. Домен нужен именно для того, чтобы"
+        log_err "адрес в клиентских конфигах пережил переезд на другой сервер."
+        exit 1
+    fi
+    # Резолв — предупреждение, а не ошибка: DNS мог ещё не разойтись, а установку
+    # из-за этого валить незачем. Но промолчать нельзя: неверный домен обнаружится
+    # только когда клиенты не смогут подключиться.
+    RESOLVED=$(getent ahostsv4 "$NODE_DOMAIN" 2>/dev/null | awk '{print $1; exit}' || echo "")
+    if [ -z "$RESOLVED" ]; then
+        log_warn "Домен $NODE_DOMAIN сейчас не резолвится. Проверьте A-запись."
+    elif [ "$RESOLVED" != "$HOST" ]; then
+        log_warn "Домен $NODE_DOMAIN указывает на $RESOLVED, а публичный IP этого сервера $HOST."
+    else
+        log_info "Домен $NODE_DOMAIN указывает на этот сервер."
+    fi
+    log_info "Клиентские конфиги будут выданы с адресом: $NODE_DOMAIN"
+fi
+
 log_info "Скачивание образа агента ($AGENT_IMAGE)..."
 docker pull "$AGENT_IMAGE"
 
@@ -118,7 +149,16 @@ fi
 echo -e "\n${GREEN}==========================================================${NC}"
 echo -e "✅ Установка успешно завершена!"
 echo -e "Скопируйте строку ниже и отправьте её боту:\n"
-echo -e "${YELLOW}wg-node://$HOST|$API_PORT|$WG_PORT|$AWG_PORT|$SOCKS_PORT|$MTPROXY_PORT|$FINGERPRINT${NC}"
+CONN="wg-node://$HOST|$API_PORT|$WG_PORT|$AWG_PORT|$SOCKS_PORT|$MTPROXY_PORT|$FINGERPRINT"
+# Домен идёт ВОСЬМЫМ полем и только если задан: старые строки из 7 полей бот по-прежнему
+# принимает и, как раньше, берёт адрес клиентских конфигов равным IP.
+[ -n "$NODE_DOMAIN" ] && CONN="$CONN|$NODE_DOMAIN"
+echo -e "${YELLOW}${CONN}${NC}"
+if [ -z "$NODE_DOMAIN" ]; then
+    echo -e "\n${YELLOW}Узел добавляется по IP.${NC} Адрес зашивается в выданные конфиги, поэтому"
+    echo -e "перенести его на другой сервер без перевыпуска конфигов будет нельзя."
+    echo -e "Если планируете переезд — переустановите с ${YELLOW}NODE_DOMAIN=vpn.example.com${NC}."
+fi
 echo -e "\nСертификат сохранён в docker volume '$TLS_VOLUME' — при обновлении узла"
 echo -e "отпечаток больше не меняется, менять его в боте повторно не придётся."
 echo -e "${GREEN}==========================================================${NC}\n"
